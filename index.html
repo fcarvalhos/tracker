@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Faction Ledger</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=IM+Fell+English:ital@0;1&display=swap" rel="stylesheet">
+<style>
+:root{--wood:#2a1b12;--wood2:#3d291b;--parch:#e8d5a8;--parch2:#d9c08a;--ink:#2b1d10;--gold:#c79a2e;--wine:#8a1f2b;--moss:#3f6b3a;--mute:#6b5636}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(ellipse at top,#4a3222,var(--wood) 70%) fixed;color:var(--ink);font:18px/1.45 'IM Fell English',Georgia,serif;min-height:100vh}
+h1,h2,h3,.cz{font-family:Cinzel,serif;letter-spacing:.04em}
+header{text-align:center;padding:28px 12px 8px;color:var(--parch)}
+h1{margin:0;font-size:clamp(28px,5vw,46px);color:var(--gold);text-shadow:0 2px 0 #000}
+header p{margin:4px 0 0;font-style:italic;opacity:.8}
+#status{font-size:14px;margin-top:6px}
+nav{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin:14px 0}
+nav button{font:600 15px Cinzel,serif;background:var(--wood2);color:var(--parch);border:2px solid var(--gold);padding:8px 16px;cursor:pointer;border-radius:3px 12px 3px 12px}
+nav button.on{background:var(--gold);color:var(--ink)}
+main{max-width:1100px;margin:0 auto;padding:0 12px 60px}
+.card{background:linear-gradient(135deg,var(--parch),var(--parch2));border:3px double var(--wood);outline:2px solid var(--gold);outline-offset:-8px;border-radius:6px;padding:22px 24px;margin-bottom:18px;box-shadow:0 6px 18px #0009}
+.card h2{margin:0 0 10px;font-size:22px;color:var(--wine)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(480px,1fr));gap:18px}
+@media(max-width:560px){.grid{grid-template-columns:1fr}.card{padding:18px 16px}}
+.row{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:8px 0;border-top:1px dashed #8a6d3b88}
+.row:first-of-type{border-top:0}
+.fn{font-weight:bold}.tier{font-style:italic;font-size:15px;color:var(--mute)}
+.bar{grid-column:1/-1;height:12px;background:#0002;border:1px solid var(--wood);position:relative;border-radius:2px}
+.bar:after{content:"";position:absolute;left:50%;top:-2px;bottom:-2px;width:2px;background:var(--wood)}
+.fill{position:absolute;top:0;bottom:0;transition:all .4s}
+.pos{background:var(--moss);left:50%}.neg{background:var(--wine);right:50%}
+.btns{display:flex;gap:3px;align-items:center}
+.btns button,.btn{font:600 14px Cinzel,serif;border:1.5px solid var(--wood);background:var(--parch);color:var(--ink);padding:3px 8px;cursor:pointer;border-radius:3px}
+.btns button:hover,.btn:hover{background:var(--gold)}
+.btn.main{background:var(--wine);color:var(--parch);border-color:var(--wood);padding:7px 16px}
+.val{min-width:44px;text-align:right;font:800 18px Cinzel,serif}
+input,select{font:inherit;padding:6px 10px;background:#fff8;border:2px solid var(--wood);border-radius:3px;color:var(--ink)}
+input:focus,button:focus-visible,select:focus{outline:3px solid var(--wine)}
+.form{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+table{border-collapse:collapse;width:100%}
+th,td{border:1px solid #6b563688;padding:6px;text-align:center}
+th{font-family:Cinzel,serif;font-size:13px;background:#0001}
+td.rel{cursor:pointer;font-size:20px;user-select:none}
+td.f{color:var(--moss)}td.h{color:var(--wine)}td.self{background:#0002;cursor:default}
+.scroll{overflow-x:auto}
+.log{list-style:none;padding:0;margin:0;max-height:420px;overflow:auto}
+.log li{padding:5px 0;border-bottom:1px dashed #8a6d3b88;font-size:16px}
+.rip{color:var(--mute);font-size:14px}
+.x{background:none;border:0;color:var(--wine);cursor:pointer;font-size:16px}
+.lb{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:6px 0}
+@media(prefers-reduced-motion:reduce){.fill{transition:none}}
+</style></head><body>
+<header><h1>⚜ The Faction Ledger ⚜</h1><p>Standing of the company among the powers of the realm</p><div id="status"></div></header>
+<nav id="nav"></nav><main id="app"></main>
+<script>
+/* ---------- CONFIG ---------- */
+const CONFIG = {
+  API_URL: 'AKfycbxuioNirDUGmwh9j8lHOlqtgcKzh6zDkYvqOmv9v-aMg1QleInnCLcLnM8EZ19DWjvV5A',      // paste your Google Apps Script Web App URL here (see setup). Empty = local demo mode
+  EDIT_KEY: 'smite',     // must match EDIT_KEY in Code.gs if you set one
+  POLL_SECONDS: 30
+};
+/* ---------- STATE ---------- */
+const RELS = ['n','f','h'], SYM = {n:'—',f:'🤝',h:'⚔'};
+const rk=(a,b)=>[a,b].sort().join('|');
+const uid=()=>Math.random().toString(36).slice(2,8);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function defaults(){
+  const F=[['harpers','The Harpers','🌙'],['zhent','The Zhentarim','🐍'],['alliance',"Lords' Alliance",'👑'],['enclave','Emerald Enclave','🌿'],['gauntlet','Order of the Gauntlet','🛡']]
+    .map(([id,name,icon])=>({id,name,icon}));
+  return {factions:F,players:[],ratio:50,log:[],
+    relations:{[rk('harpers','zhent')]:'h',[rk('harpers','alliance')]:'f',[rk('harpers','enclave')]:'f',
+      [rk('zhent','gauntlet')]:'h',[rk('zhent','alliance')]:'h',[rk('alliance','gauntlet')]:'f'}};
+}
+let S=defaults(), tab='rep', dirty=false, saving=false;
+const tier=v=>v>=75?'Exalted':v>=40?'Honored':v>=10?'Friendly':v>-10?'Neutral':v>-40?'Unfriendly':v>-75?'Hostile':'Hated';
+const clamp=v=>Math.max(-100,Math.min(100,v));
+const rel=(a,b)=>S.relations[rk(a,b)]||'n';
+/* ---------- STORAGE ---------- */
+const $st=(t,c)=>{const e=document.getElementById('status');e.textContent=t;e.style.color=c||'#e8d5a8'};
+async function load(){
+  try{
+    let d;
+    if(CONFIG.API_URL){const r=await fetch(CONFIG.API_URL);d=await r.json();$st('📜 Synced with the Google Sheet','#9fd18b')}
+    else{d=JSON.parse(localStorage.getItem('factionLedger')||'null');$st('Demo mode: saved only in this browser (see setup to share)','#e0b060')}
+    if(d&&d.factions)S=d;
+  }catch(e){$st('Could not reach the sheet: '+e.message,'#ff9a9a')}
+  render();
+}
+async function save(){
+  dirty=true;
+  if(!CONFIG.API_URL){localStorage.setItem('factionLedger',JSON.stringify(S));dirty=false;return}
+  saving=true;$st('Saving…');
+  try{
+    const r=await fetch(CONFIG.API_URL,{method:'POST',body:JSON.stringify({key:CONFIG.EDIT_KEY,state:S})});
+    const j=await r.json(); if(j.error)throw new Error(j.error);
+    $st('📜 Saved to the Google Sheet','#9fd18b');dirty=false;
+  }catch(e){$st('Save failed: '+e.message,'#ff9a9a')}
+  saving=false;
+}
+/* ---------- LOGIC ---------- */
+function adjust(pid,fid,delta,ripple=true){
+  const p=S.players.find(x=>x.id===pid), f=S.factions.find(x=>x.id===fid); if(!p||!f)return;
+  const before=Object.assign({},p.rep);
+  p.rep[fid]=clamp((p.rep[fid]||0)+delta);
+  const eff=[];
+  if(ripple)for(const g of S.factions){
+    if(g.id===fid)continue; const r=rel(fid,g.id); if(r==='n')continue;
+    const d=delta*(S.ratio/100)*(r==='f'?1:-1);
+    p.rep[g.id]=clamp((p.rep[g.id]||0)+d);
+    eff.push(`${g.name} ${d>0?'+':''}${+d.toFixed(1)}`);
+  }
+  S.log.unshift({t:Date.now(),p:p.name,f:f.name,d:delta,eff});
+  S.log=S.log.slice(0,200); save(); render();
+}
+/* ---------- VIEWS ---------- */
+function repView(){
+  if(!S.players.length)return `<div class="card"><h2>No heroes yet</h2><p>Add the first adventurer in the “Company” tab.</p></div>`;
+  return `<div class="grid">`+S.players.map(p=>`<section class="card"><h2>${esc(p.name)}</h2>`+S.factions.map(f=>{
+    const v=p.rep[f.id]||0, w=Math.abs(v)/2;
+    return `<div class="row"><div><span class="fn">${f.icon} ${esc(f.name)}</span> <span class="tier">${tier(v)}</span></div>
+    <div class="btns">${[-10,-5,-1,1,5,10].map(d=>`<button data-act="adj" data-p="${p.id}" data-f="${f.id}" data-d="${d}" aria-label="${d>0?'Raise':'Lower'} ${esc(f.name)} by ${Math.abs(d)}">${d>0?'+':''}${d}</button>`).join('')}<span class="val">${Math.round(v)}</span></div>
+    <div class="bar"><div class="fill ${v>=0?'pos':'neg'}" style="width:${w}%"></div></div></div>`}).join('')+`</section>`).join('')+`</div>`;
+}
+function factionView(){
+  const F=S.factions;
+  const head=`<tr><th></th>${F.map(f=>`<th title="${esc(f.name)}">${f.icon}<br>${esc(f.name)}</th>`).join('')}</tr>`;
+  const body=F.map(a=>`<tr><th style="text-align:left">${a.icon} ${esc(a.name)} <button class="x" data-act="delf" data-f="${a.id}" title="Remove faction">✕</button></th>`+
+    F.map(b=>a.id===b.id?`<td class="self"></td>`:`<td class="rel ${rel(a.id,b.id)}" data-act="rel" data-a="${a.id}" data-b="${b.id}" title="${esc(a.name)} & ${esc(b.name)}: click to change">${SYM[rel(a.id,b.id)]}</td>`).join('')+`</tr>`).join('');
+  return `<div class="card"><h2>Relations between factions</h2>
+  <p>Click a cell to cycle: <b>—</b> indifferent → <b>🤝</b> friendly → <b>⚔</b> hostile. Friends share a rise in standing; foes lose it.</p>
+  <div class="scroll"><table>${head}${body}</table></div>
+  <div class="lb"><label for="ratio">Ripple strength:</label><input id="ratio" type="range" min="0" max="100" step="5" value="${S.ratio}"> <b id="rv">${S.ratio}%</b></div></div>
+  <div class="card"><h2>Add a faction</h2><div class="form"><input id="fic" placeholder="Icon" size="3" maxlength="4" value="🏰"><input id="fname" placeholder="Faction name"><button class="btn main" data-act="addf">Add faction</button></div></div>`;
+}
+function playersView(){
+  return `<div class="card"><h2>The Company</h2>
+  ${S.players.map(p=>`<div class="lb"><b>${esc(p.name)}</b> <button class="x" data-act="delp" data-p="${p.id}" title="Remove player">✕</button></div>`).join('')||'<p>No adventurers have signed the roll.</p>'}
+  <div class="form"><input id="pname" placeholder="Adventurer name" maxlength="40"><button class="btn main" data-act="addp">Add to the roll</button></div></div>`;
+}
+function logView(){
+  return `<div class="card"><h2>Chronicle</h2><ul class="log">${S.log.map(l=>`<li><b>${esc(l.p)}</b> ${l.d>0?'gained':'lost'} ${Math.abs(l.d)} with <b>${esc(l.f)}</b>
+  ${l.eff.length?`<div class="rip">Ripples: ${l.eff.map(esc).join(', ')}</div>`:''} <span class="rip">${new Date(l.t).toLocaleString()}</span></li>`).join('')||'<li>Nothing recorded yet.</li>'}</ul></div>`;
+}
+function render(){
+  const T=[['rep','Reputation'],['fac','Factions'],['pl','Company'],['log','Chronicle']];
+  document.getElementById('nav').innerHTML=T.map(([k,n])=>`<button class="${tab===k?'on':''}" data-act="tab" data-t="${k}">${n}</button>`).join('');
+  document.getElementById('app').innerHTML={rep:repView,fac:factionView,pl:playersView,log:logView}[tab]();
+}
+/* ---------- EVENTS ---------- */
+document.addEventListener('click',e=>{
+  const el=e.target.closest('[data-act]'); if(!el)return; const d=el.dataset;
+  if(d.act==='tab'){tab=d.t;render()}
+  else if(d.act==='adj')adjust(d.p,d.f,+d.d);
+  else if(d.act==='rel'){const k=rk(d.a,d.b);S.relations[k]=RELS[(RELS.indexOf(rel(d.a,d.b))+1)%3];save();render()}
+  else if(d.act==='addp'){const n=document.getElementById('pname').value.trim();if(!n)return;
+    S.players.push({id:uid(),name:n,rep:Object.fromEntries(S.factions.map(f=>[f.id,0]))});save();render()}
+  else if(d.act==='addf'){const n=document.getElementById('fname').value.trim();if(!n)return;
+    S.factions.push({id:uid(),name:n,icon:document.getElementById('fic').value||'🏰'});save();render()}
+  else if(d.act==='delp'){if(confirm('Remove this player?')){S.players=S.players.filter(p=>p.id!==d.p);save();render()}}
+  else if(d.act==='delf'){if(confirm('Remove this faction and its relations?')){S.factions=S.factions.filter(f=>f.id!==d.f);
+    S.players.forEach(p=>delete p.rep[d.f]);Object.keys(S.relations).forEach(k=>k.split('|').includes(d.f)&&delete S.relations[k]);save();render()}}
+});
+document.addEventListener('input',e=>{if(e.target.id==='ratio'){S.ratio=+e.target.value;document.getElementById('rv').textContent=S.ratio+'%'}});
+document.addEventListener('change',e=>{if(e.target.id==='ratio')save()});
+document.addEventListener('keydown',e=>{if(e.key==='Enter'){const b=e.target.id==='pname'?'addp':e.target.id==='fname'?'addf':null;if(b)document.querySelector(`[data-act=${b}]`).click()}});
+load();
+if(CONFIG.API_URL)setInterval(()=>{if(!dirty&&!saving&&!document.activeElement?.matches('input'))load()},CONFIG.POLL_SECONDS*1000);
+</script></body></html>
